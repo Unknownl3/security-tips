@@ -1,0 +1,8 @@
+поиск на сервере по с md5
+ls -1 / | grep -vEx 'sys|dev|proc|home|tmp|mnt' | xargs -I{}  find /{} -executable -type f -print0 | xargs -0 md5sum | grep %md5%
+
+ls -1 / | grep -vEx 'sys|dev|proc|home|tmp|mnt' | xargs -I{}  find /{} -executable -type f -ctime -150 -print0 | xargs -0 stat --printf='%Z %.19z %n\n' | sort -k1 -n | cut -c 12- | less -S
+
+поиск всех S бит
+ls -1 / | grep -vEx 'sys|dev|proc|home|tmp|mnt' | xargs -I{} find /{} -perm -4000 -o -perm -2000 -type f -ls
+ls -1 / | grep -vEx 'sys|dev|proc|tmp|mnt' | xargs -I{} ionice -c 3 find /{} -perm /6000 -type f -ls
