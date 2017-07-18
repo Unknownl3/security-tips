@@ -1,0 +1,17 @@
+- ищем .htaccess и проверяем на наличие редиректов
+find / -type f -iname '*htaccess' -exec grep -i rewrite {} \;
+
+- ищем шеллы и вирусы вручную:
+egrep -ril “base64_decode|auth_pass|shell_exec” /
+(паттерны для поиска)
+Паттерны для поиска, чаще всего, следующие:
+```FilesMan, try{document.body, String["fromCharCode"], auth_pass, fromCharCode,
+shell_exec, passthru, system, base64_decode, chmod, passwd, mkdir,
+eval(str_replace, eval(gzinflate, ="";function, "ev"+"al",md5=,ss+st.fromCharCode, e2aa4e```
+
+- проверяем наличие крон-заданий для пользователя и root:
+egrep -ri ‘wget|sh|fetch|curl’ /var/spool/cron
+
+- проверяем логи ftp и ssh
+grep -i accept /var/log/auth.log
+egrep -i "accept|success" /var/log/secure
